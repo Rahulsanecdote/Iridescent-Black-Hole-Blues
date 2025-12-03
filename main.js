@@ -35,67 +35,25 @@ scene.add(ambientLight);
 
 // --- TEXTURE LOADER (Custom Chroma Key) ---
 const butterflyUniforms = {
-    map: { value: null }, // Will be updated after processing
+    map: { value: null },
     time: { value: 0 },
     metamorphosis: { value: params.metamorphosis },
     iridescence: { value: params.iridescence },
     opacity: { value: params.opacity }
 };
 
-function processTexture() {
-    const img = new Image();
-    img.src = 'assets/butterfly.jpg'; // Use the original JPG
-    img.onload = () => {
-        const canvas = document.createElement('canvas');
-        canvas.width = img.width;
-        canvas.height = img.height;
-        const ctx = canvas.getContext('2d');
-        ctx.drawImage(img, 0, 0);
-
-        const imageData = ctx.getImageData(0, 0, canvas.width, canvas.height);
-        const data = imageData.data;
-
-        // Sample background color from top-left corner
-        const bgR = data[0];
-        const bgG = data[1];
-        const bgB = data[2];
-
-        // Thresholds
-        const threshold = 50; // Distance to be considered fully transparent
-        const softEdge = 20;  // Additional distance for partial transparency
-
-        for (let i = 0; i < data.length; i += 4) {
-            const r = data[i];
-            const g = data[i + 1];
-            const b = data[i + 2];
-
-            const dr = r - bgR;
-            const dg = g - bgG;
-            const db = b - bgB;
-            const dist = Math.sqrt(dr * dr + dg * dg + db * db);
-
-            if (dist < threshold) {
-                // Background -> Fully Transparent
-                data[i + 3] = 0;
-            } else if (dist < threshold + softEdge) {
-                // Edge -> Semi-transparent
-                const alpha = (dist - threshold) / softEdge;
-                data[i + 3] = Math.floor(alpha * 255);
-            }
-        }
-
-        ctx.putImageData(imageData, 0, 0);
-
-        const texture = new THREE.CanvasTexture(canvas);
-        texture.colorSpace = THREE.SRGBColorSpace; // Ensure correct color space
-
-        // Update uniforms
+function loadButterflyTexture() {
+    const loader = new THREE.TextureLoader();
+    loader.load('assets/butterfly_transparent.png', (texture) => {
+        texture.colorSpace = THREE.SRGBColorSpace;
+        texture.premultiplyAlpha = true;
+        texture.anisotropy = renderer.capabilities.getMaxAnisotropy();
         butterflyUniforms.map.value = texture;
         butterflyMaterial.needsUpdate = true;
-    };
+    });
 }
 
-processTexture();
+loadButterflyTexture();
 
 // --- OBJECTS ---
 
@@ -219,9 +177,11 @@ const butterflyMaterial = new THREE.ShaderMaterial({
 
         void main() {
             vec4 texColor = texture2D(map, vUv);
-            
+
             // 1. Alpha Check (from PNG)
-            if (texColor.a < 0.1) discard;
+            if (texColor.a < 0.05) discard;
+            // 2. Premultiply color to avoid a white fringe from the export
+            texColor.rgb *= texColor.a;
 
             // Structural Color / Iridescence
             vec3 viewDir = normalize(vViewPosition);
